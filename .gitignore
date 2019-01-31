@@ -11,3 +11,6 @@ Cargo.lock
 
 /target
 **/*.rs.bk
+
+# Crate index goes here by default, you don't want to try to commit it trust me.
+/_index/*
