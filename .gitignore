@@ -14,3 +14,5 @@ Cargo.lock
 
 # Crate index goes here by default, you don't want to try to commit it trust me.
 /_index/*
+# Work dir for unzipped packages and such
+/_work/*

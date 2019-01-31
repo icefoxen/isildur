@@ -1,8 +1,132 @@
 use crates_index;
+use flate2::bufread::GzDecoder;
+use reqwest;
+use tar;
+use toml_edit;
 use std::collections::HashSet;
+use std::fs;
+use std::path;
+
+const WORK_DIR: &str = "_work";
+
+fn crate_file_path(crate_name: &str, version: &str) -> String {
+    format!("{}/{}-{}.crate", WORK_DIR, crate_name, version)
+}
+
+fn crate_dir_path(crate_name: &str, version: &str) -> String {
+    format!("{}/{}-{}", WORK_DIR, crate_name, version)
+}
+
+
+/// Actually downloads the given crate.
+fn fetch_crate(crate_name: &str, version: &str) {
+    assert_ne!(crate_name, "", "Crate name must not be an empty string!");
+    use reqwest::header::*;
+    let mut headers = HeaderMap::new();
+    const USER_AGENT_STR: &str = "isildur (https://crates.io/crates/isildur)";
+    headers.insert(USER_AGENT, USER_AGENT_STR.parse().unwrap());
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("Could not build HTTP client?");
+
+    let url_string = format!(
+        "https://static.crates.io/crates/{}/{}-{}.crate",
+        crate_name, crate_name, version
+    );
+    let url = reqwest::Url::parse(&url_string).expect("Invalid URL!");
+    
+    let mut resp = client.get(url).send()
+        .expect("Could not send HTTP request?");
+
+    fs::create_dir_all(WORK_DIR).expect("Could not create work dir?");
+    let crate_file_path = crate_file_path(crate_name, version);
+    let crate_file = &mut fs::File::create(crate_file_path).expect("Could not open output crate file?");
+    
+    let byte_count = resp.copy_to(crate_file)
+        .expect("Could not write crate to output file?");
+    println!("    downloaded {}, {} kb written.", url_string, (byte_count / 1024) + 1);
+}
+
+
+fn extract_crate(src_crate: &str, version: &str) {
+    let crate_path = crate_file_path(src_crate, version);
+    use std::io;
+    let in_stream = io::BufReader::new(fs::File::open(crate_path)
+    .expect("Could not read crate file?"));                                                   
+    let gz_stream = GzDecoder::new(in_stream);
+    let mut archive = tar::Archive::new(gz_stream);
+    archive.unpack(WORK_DIR)
+        .expect("Could not unpack crate archive.");
+}
+
+fn fiddle_cargo_toml(src_crate: &str, dest_crate: &str, version: &str) {
+    // oh noez we have to actually use real paths now ;_;
+    let mut cargo_toml_path = path::PathBuf::from(crate_dir_path(src_crate, version));
+    cargo_toml_path.push("Cargo.toml");
+    {
+        let contents = fs::read_to_string(&cargo_toml_path)
+            .expect("Could not read cargo.toml!");
+        // toml_edit might not be the best tool for this but it works.
+        let mut doc = contents.parse::<toml_edit::Document>()
+            .expect("Invalid toml!");
+        doc["package"]["name"] = toml_edit::value(dest_crate);
+
+        let desc_str = doc["package"]["description"].as_str()
+            .expect("Package description is not a string???");
+        let modified_desc_str = format!("Automated mirror of {} - {}", src_crate, desc_str);
+        doc["package"]["description"] = toml_edit::value(modified_desc_str);
+        let new_cargo_toml_contents = doc.to_string();
+
+        // Actually write output
+        fs::write(cargo_toml_path, new_cargo_toml_contents.as_bytes())
+            .expect("Couldn't write to cargo.toml?");
+    }
+}
+
+
+/// Prepend our disclaimer to the README.md file of the crate, creating
+/// it if necessary.
+fn fiddle_readme(src_crate: &str, dest_crate: &str, version: &str) {    
+    let disclaimer_string = format!(r#"
+# {dest} - a republish of {src}
+
+This crate is, apart from the name, an exact duplicate of {src}.  It has been produced by an automatic
+tool to work around some inconvenience in the upstream crate.
+
+For more information see <https://crates.io/crates/isildur>.
+
+"#, src=src_crate, dest=dest_crate);
+
+    let mut cargo_toml_path = path::PathBuf::from(crate_dir_path(src_crate, version));
+    cargo_toml_path.push("Cargo.toml");
+    {
+        let contents = fs::read_to_string(&cargo_toml_path)
+            .expect("Could not read cargo.toml!");
+        // toml_edit might not be the best tool for this but it works.
+        let mut doc = contents.parse::<toml_edit::Document>()
+            .expect("Invalid toml!");
+        let readme_file = doc["package"]["readme"].as_str()
+            .unwrap_or("README.md");
+
+        // TODO: Finish
+    }
+
+}
+
 
 fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str) {
     println!("Mirroring {} {} -> {} {}", src_crate, version, dest_crate, version);
+    println!("  Grabbing src crate file");
+    fetch_crate(src_crate, version);
+    println!("  Heckin' unzipping it");
+    extract_crate(src_crate, version);
+    println!("  Fiddling name and stuff");
+    fiddle_cargo_toml(src_crate, dest_crate, version);
+    fiddle_readme(src_crate, dest_crate, version);
+    println!("  Publishing...");
+    println!("  Done!");
 }
 
 fn main() {
@@ -44,5 +168,10 @@ fn main() {
     };
 
     src_versions_to_mirror.iter()
-        .for_each(|v| mirror_crate(&SRC_CRATE, &DEST_CRATE, v));
+        .for_each(|v| {
+            mirror_crate(&SRC_CRATE, &DEST_CRATE, v);
+            // Sleep for a sec so we don't slam crates.io too hard
+            // unlikely, but still polite.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        });
 }
