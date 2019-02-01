@@ -38,7 +38,8 @@ This software makes no modifications to the source crate besides the
 name and a disclaimer in the readme.  Other people might also pretend
 to mirror a crate but produce mimic crates that contain malware.
 Because the crates.io checksum for a crate file includes the
-`Cargo.toml` file when calculating its hash, the republished crates
-created by this tool will have a different checksum than the original,
-making it more difficult to detect this kind of attack.  Make sure you
-trust your sources!
+`Cargo.toml` file when calculating its hash, and this tool has to
+modify the `Cargo.toml` to update the crate's name, the republished
+crates created by this tool will have a different checksum than the
+original.  That makes it more difficult (though still not impossible)
+to detect this kind of attack.  Make sure you trust your sources!
