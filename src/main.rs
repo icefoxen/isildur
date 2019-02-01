@@ -147,17 +147,22 @@ Original README.md file follows:
         .expect(&format!("Couldn't write to readme file {:?}", &readme_file_path));
 }
 
-fn heckin_publish(src_crate: &str, version: &str) {
+fn heckin_publish(src_crate: &str, version: &str, do_for_real: bool) {
     use std::process;
     use std::io::{self, Write};
     let working_dir = crate_dir_path(src_crate, version);
-    let output = process::Command::new("cargo")
-//        .arg("cargo")
-        .arg("publish")
+    let mut command = process::Command::new("cargo");
+    //        .arg("cargo")
+    command
+        .arg("publish");
+    if !do_for_real {
+        command.arg("--dry-run");
+    }
+    let output = command
         .current_dir(working_dir)
         .output()
         .expect("Could not run cargo publish?");
-
+    
     io::stdout().write_all(&output.stdout).unwrap();
     io::stdout().write_all(&output.stderr).unwrap();
     if !output.status.success() {
@@ -179,11 +184,11 @@ fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: b
     fiddle_cargo_toml(src_crate, dest_crate, version);
     fiddle_readme(src_crate, dest_crate, version);
     println!("  Heckin publishing...");
-    if do_for_real {
-        heckin_publish(src_crate, version);
-    } else {
+    if !do_for_real {
         println!("  (But not really!)");
     }
+    heckin_publish(src_crate, version, do_for_real);
+
     println!("  Done!");
 }
 
