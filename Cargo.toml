@@ -5,6 +5,7 @@ version = "0.1.0"
 authors = ["Simon Heath <icefoxen@gmail.com>"]
 edition = "2018"
 repository = "http://github.com/icefoxen/isildur"
+license = "MIT"
 
 [profile.dev]
 opt-level = 1
