@@ -4,7 +4,7 @@ use reqwest;
 use structopt::{self, StructOpt};
 use tar;
 use toml_edit;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path;
 
@@ -219,26 +219,22 @@ fn main() {
         .expect("The crate we're trying to mirror does not exist?");
     let dest_crate = index.crates().find(|c| c.name() == opt.dest);
 
-    let src_versions_to_mirror = if let Some(existing_dest) = dest_crate {
+    let src_versions_to_mirror: Vec<String> = if let Some(existing_dest) = dest_crate {
         println!("Dest crate exists, filtering out known versions");
-        
-        let src_version_set: HashSet<&str> =
-            src_crate.versions().iter().map(|v| v.version()).collect();
-        let versions_to_mirror: Vec<String> = existing_dest.versions().iter()
-            .map(|dest_version| dest_version.version()) // We just need the string.
-            .filter(|dest_version_str| src_version_set.contains(dest_version_str))
-        // If we collect to Vec<&str> then we can't return it 'cause
-        // all the &str's point into `existing_dest`, which is dropped
-        // at the end of this scope.  We COULD fiddle the order of things
-            // to make the ownership work, orrrrrrrrr...
-            .map(|v| v.to_owned())
-            .collect();
-        versions_to_mirror
+
+        // Going through the versions in order is unnecessary but convenient
+        let mut src_version_set: BTreeSet<String> =
+            src_crate.versions().iter().map(|v| v.version().to_owned()).collect();
+        let dest_versions = existing_dest.versions().iter()
+            .map(|dest_version| dest_version.version().to_owned());
+        for version_string in dest_versions {
+            src_version_set.remove(&version_string);
+        }
+        src_version_set.into_iter().collect()
     } else {
         println!("Dest crate does not exist, mirroring all src crate versions");
         src_crate.versions().iter()
-            .map(|v| v.version()) // Just get the string
-            .map(|v| v.to_owned())
+            .map(|v| v.version().to_owned()) // Just get the version string
             .collect()
     };
 
