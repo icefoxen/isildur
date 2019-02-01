@@ -18,6 +18,10 @@ use std::path;
 /// Fortunately the dep tree only goes one deep, so we can
 /// kinda just do this by hand and it more or less should
 /// be ok.  :|
+///
+/// What we need to do is basically change `untrusted = "0.3"`
+/// into `untrusted = { package = "detsurtnu", version = "0.3"}`,
+/// while preserving anything else in it.
 const PATCHES: &[(&str, &str)] = &[
     ("untrusted", "detsurtnu"),
 ];
@@ -82,6 +86,36 @@ fn extract_crate(src_crate: &str, version: &str) {
         .expect("Could not unpack crate archive.");
 }
 
+fn patch_deps(toml_doc: &mut toml_edit::Document) {
+    use toml_edit::{Item, value};
+    if let Some(dep_table) = toml_doc["dependencies"].as_table_mut() {
+        for (dep, new_dep) in PATCHES {
+            let old_dep_section = dep_table.get(dep);
+            let new_dep_section = match old_dep_section {
+                Some(Item::Value(v)) => {
+                    // Replace `foo = "0.3"` with `foo = {package = "bar", version = "0.3"}`
+                    let old_dep_version = v.clone();
+                    let mut new_dep_table = toml_edit::Table::new();
+                    *new_dep_table.entry("version") = value(old_dep_version);
+                    *new_dep_table.entry("package") = value(*new_dep);
+                    Item::Table(new_dep_table)
+                },
+                Some(Item::Table(t)) => {
+                    // Replace `foo = {version = "0.3", ...}` with
+                    // `foo = {version = "0.3", package = "bar", ...}
+                    *new_dep_table.entry("package") = value(*new_dep);
+                    Item::Table(t.clone())
+                }
+                Some(other) => other.clone(),
+                _ => Item::None,
+            };
+            dep_table[dep] = new_dep_section;
+        }
+    } else {
+        // Welp, no dependency section in the cargo.toml
+    }
+}
+
 fn fiddle_cargo_toml(src_crate: &str, dest_crate: &str, version: &str) {
     // oh noez we have to actually use real paths now ;_;
     let mut cargo_toml_path = path::PathBuf::from(crate_dir_path(src_crate, version));
@@ -99,6 +133,9 @@ fn fiddle_cargo_toml(src_crate: &str, dest_crate: &str, version: &str) {
             .expect("Package description is not a string???");
         let modified_desc_str = format!("Automated mirror of {} - {}", src_crate, desc_str);
         doc["package"]["description"] = toml_edit::value(modified_desc_str);
+
+        patch_deps(&mut doc);
+        
         let new_cargo_toml_contents = doc.to_string();
 
         // Actually write output

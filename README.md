@@ -19,11 +19,12 @@ If you want to write a library using `ring` without potentially
 breaking heckin' everything forever whenever one of your users tries
 to use `ring` as well, consider using `gnir` instead.
 
-This tool republishes the crate with no changes, other than the name.
-Be aware that using old versions of `ring` may expose you to security
-vulnerabilities, and that the original maintainer of it does not
-provide any support for older versions except through paid
-contracting.
+This tool republishes the crate with no changes, other than the name
+and maybe some dependency fixups.  Be aware that using old versions of
+`ring` may expose you to security vulnerabilities, and that the
+original maintainer of it does not provide any support for older
+versions except through paid contracting.  And I sure as heck am not
+going to be responsible for anything made through this.
 
 
 # Is this reliable?
@@ -34,8 +35,24 @@ another, so I'm providing this software to whoever wants it to
 implement their own such things.
 
 If you don't trust that, feel free to deploy this software itself.
-It isn't really intended for other people to use it though, so you'll
-have to modify the source code to make it aim at what you want.
+It isn't really intended for other people to use it though.
+
+It's also possible that an old crate that currently exists, such as `ring` 0.3, can no
+longer be published to crates.io. This can happen for a few different
+reasons:
+
+ * Ironically, it may depend on another crate that has been yanked
+   (such as an old version of `untrusted`, [to pick an example
+   completely at random](https://crates.io/crates/detsurtnu)), so you
+   have to go down the dependency tree and mirror all of those as
+   well, and patch the crates you want to mirror to point to those
+   mirrors.  Fortunately, cargo has support for renaming crates, so 
+   this tool has a list of crate names to patch and will rename them
+   to the ones specified.
+ * Rust has mutated a little over time, not *always* in a
+   backwards-compatible way, so old packages may no longer build.
+
+
 
 # Is this safe?
 
