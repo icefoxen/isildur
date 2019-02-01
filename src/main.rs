@@ -1,11 +1,26 @@
 use crates_index;
 use flate2::bufread::GzDecoder;
 use reqwest;
+use structopt::{self, StructOpt};
 use tar;
 use toml_edit;
 use std::collections::HashSet;
 use std::fs;
 use std::path;
+
+/// A list of crates to patch.
+/// Because `ring` depends on `untrusted`,
+/// which has the same irritating yank policy...
+/// which means that we can't republish old versions of
+/// `ring` that `depend` on yanked versions of `untrusted`.
+/// So we have to go down the dep tree and replace things as necessary!
+///
+/// Fortunately the dep tree only goes one deep, so we can
+/// kinda just do this by hand and it more or less should
+/// be ok.  :|
+const PATCHES: &[(&str, &str)] = &[
+    ("untrusted", "detsurtnu"),
+];
 
 const WORK_DIR: &str = "_work";
 
@@ -132,26 +147,65 @@ Original README.md file follows:
         .expect(&format!("Couldn't write to readme file {:?}", &readme_file_path));
 }
 
-fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str) {
+fn heckin_publish(src_crate: &str, version: &str) {
+    use std::process;
+    use std::io::{self, Write};
+    let working_dir = crate_dir_path(src_crate, version);
+    let output = process::Command::new("cargo")
+//        .arg("cargo")
+        .arg("publish")
+        .current_dir(working_dir)
+        .output()
+        .expect("Could not run cargo publish?");
+
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stdout().write_all(&output.stderr).unwrap();
+    if !output.status.success() {
+        println!("        Cargo {}", output.status);
+        process::exit(1);
+    }
+}
+
+fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: bool) {
     println!(
         "Mirroring {} {} -> {} {}",
         src_crate, version, dest_crate, version
     );
     println!("  Grabbing src crate file");
     fetch_crate(src_crate, version);
-    println!("  Heckin' unzipping it");
+    println!("  Extracting crate");
     extract_crate(src_crate, version);
     println!("  Fiddling name and readme");
     fiddle_cargo_toml(src_crate, dest_crate, version);
     fiddle_readme(src_crate, dest_crate, version);
-    println!("  Publishing...");
+    println!("  Heckin publishing...");
+    if do_for_real {
+        heckin_publish(src_crate, version);
+    } else {
+        println!("  (But not really!)");
+    }
     println!("  Done!");
 }
 
+#[derive(Debug, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+struct Opt {
+    /// The crate to rename
+    #[structopt(long)]
+    src: String,
+    /// What to rename it to
+    #[structopt(long)]
+    dest: String,
+    /// When passed, actually publishes the crate instead of doing everything but.
+    #[structopt(long)]
+    do_for_real: bool,
+}
+
 fn main() {
-    const SRC_CRATE: &str = "ring";
-    const DEST_CRATE: &str = "gnir";
     const CRATE_INDEX_DIR: &str = "_index";
+
+    
+    let opt = Opt::from_args();
 
     let index = crates_index::Index::new(CRATE_INDEX_DIR);
     println!("Fetching crate index...");
@@ -161,14 +215,13 @@ fn main() {
         .expect("Could not fetch/update crate index.");
     let src_crate = index
         .crates()
-        .find(|c| c.name() == SRC_CRATE)
+        .find(|c| c.name() == opt.src)
         .expect("The crate we're trying to mirror does not exist?");
-    let dest_crate = index.crates().find(|c| c.name() == DEST_CRATE);
+    let dest_crate = index.crates().find(|c| c.name() == opt.dest);
 
     let src_versions_to_mirror = if let Some(existing_dest) = dest_crate {
         println!("Dest crate exists, filtering out known versions");
-        // O(n^2) is just fine if n is small, honest o/`
-        // Fiiiiine, it's simpler to do it right anyway.
+        
         let src_version_set: HashSet<&str> =
             src_crate.versions().iter().map(|v| v.version()).collect();
         let versions_to_mirror: Vec<String> = existing_dest.versions().iter()
@@ -190,9 +243,9 @@ fn main() {
     };
 
     src_versions_to_mirror.iter().for_each(|v| {
-        mirror_crate(&SRC_CRATE, &DEST_CRATE, v);
-        // Sleep for a sec so we don't slam crates.io too hard
-        // unlikely, but still polite.
+        mirror_crate(&opt.src, &opt.dest, v, opt.do_for_real);
+        // Sleep for a sec so we don't slam crates.io too hard.
+        // Unlikely, but still polite to do.
         std::thread::sleep(std::time::Duration::from_secs(1));
     });
 }

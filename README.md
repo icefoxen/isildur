@@ -15,12 +15,15 @@ and re-publish it under a different crate name
 ([`gnir`](https://crates.io/crates/gnir), 'cause, why not) which 
 will never be yanked.
 
-If you want to write a library using `ring` without potentially breaking heckin' everything forever
-whenever one of your users tries to use `ring` as well, consider using `gnir` instead.
+If you want to write a library using `ring` without potentially
+breaking heckin' everything forever whenever one of your users tries
+to use `ring` as well, consider using `gnir` instead.
 
-This tool republishes the crate with no changes, other than the name.  Be aware that 
-using old versions of `ring` may expose you to security vulnerabilities, and that the original
-maintainer of it does not provide any support for older versions except through paid contracting.
+This tool republishes the crate with no changes, other than the name.
+Be aware that using old versions of `ring` may expose you to security
+vulnerabilities, and that the original maintainer of it does not
+provide any support for older versions except through paid
+contracting.
 
 
 # Is this reliable?
@@ -31,6 +34,8 @@ another, so I'm providing this software to whoever wants it to
 implement their own such things.
 
 If you don't trust that, feel free to deploy this software itself.
+It isn't really intended for other people to use it though, so you'll
+have to modify the source code to make it aim at what you want.
 
 # Is this safe?
 
