@@ -7,6 +7,8 @@ use toml_edit;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path;
+use std::process;
+use std::io::{self, Write};
 
 /// A list of crates to patch.
 /// Because `ring` depends on `untrusted`,
@@ -22,9 +24,10 @@ use std::path;
 /// What we need to do is basically change `untrusted = "0.3"`
 /// into `untrusted = { package = "detsurtnu", version = "0.3"}`,
 /// while preserving anything else in it.
-const PATCHES: &[(&str, &str)] = &[
+const DEP_RENAMES: &[(&str, &str)] = &[
     ("untrusted", "detsurtnu"),
 ];
+
 
 const WORK_DIR: &str = "_work";
 
@@ -89,7 +92,7 @@ fn extract_crate(src_crate: &str, version: &str) {
 fn patch_deps(toml_doc: &mut toml_edit::Document) {
     use toml_edit::{Item, value};
     if let Some(dep_table) = toml_doc["dependencies"].as_table_mut() {
-        for (dep, new_dep) in PATCHES {
+        for (dep, new_dep) in DEP_RENAMES {
             let old_dep_section = dep_table.get(dep);
             let new_dep_section = match old_dep_section {
                 Some(Item::Value(v)) => {
@@ -185,12 +188,76 @@ Original README.md file follows:
         .expect(&format!("Couldn't write to readme file {:?}", &readme_file_path));
 }
 
+/// Ring's build system is convoluted and build.rs does different
+/// things based on the package name it's building.
+/// So we fix the package name it looks for to match.
+fn do_fragile_sed_crap(src_crate: &str, dest_crate: &str, version: &str) {
+    let match_str = format!(r#"s/"{}"/"{}"/"#, src_crate, dest_crate);
+    let working_dir = crate_dir_path(src_crate, version);
+    let output = process::Command::new("sed")
+        .arg("-i")
+        .arg("-e")
+        .arg(&match_str)
+        .arg("build.rs")
+        .current_dir(&working_dir)
+        .output()
+        .expect("Could not run hacky sed crap");
+
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stdout().write_all(&output.stderr).unwrap();
+    if !output.status.success() {
+        println!("        Hacky sed results: {}", output.status);
+    }
+
+    // While we're at it, rustc has gotten stricter and ring makes
+    // basically everything an error by default, so 
+    // we need to allow a few things to publish older versions
+    let output = process::Command::new("sed")
+        .arg("-i")
+        .arg("-e")
+        .arg("s/unused_results,//")
+        .arg("-e")
+        .arg("s/warnings,//")
+        .arg("-e")
+        .arg("s/deprecated,//")
+        .arg("-e")
+        .arg("s/.args(&args)/.args(args.iter())/")
+        .arg("build.rs")
+        .current_dir(&working_dir)
+        .output()
+        .expect("Could not run hacky sed crap");
+
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stdout().write_all(&output.stderr).unwrap();
+    if !output.status.success() {
+        println!("        Hacky sed results: {}", output.status);
+    }
+
+    // Sure, let's abuse lib.rs as well, why not!
+    let output = process::Command::new("sed")
+        .arg("-i")
+        .arg("-e")
+        .arg("s/unused_imports,//")
+        .arg("-e")
+        .arg("s/warnings,//")
+        .arg("-e")
+        .arg("s/warnings//")
+        .arg("src/lib.rs")
+        .current_dir(&working_dir)
+        .output()
+        .expect("Could not run hacky sed crap");
+
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stdout().write_all(&output.stderr).unwrap();
+    if !output.status.success() {
+        println!("        Hacky sed results: {}", output.status);
+    }
+
+}
+
 fn heckin_publish(src_crate: &str, version: &str, do_for_real: bool, ignore_failures: bool) {
-    use std::process;
-    use std::io::{self, Write};
     let working_dir = crate_dir_path(src_crate, version);
     let mut command = process::Command::new("cargo");
-    //        .arg("cargo")
     command
         .arg("publish");
     if !do_for_real {
@@ -223,6 +290,10 @@ fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: b
     println!("  Fiddling name and readme");
     fiddle_cargo_toml(src_crate, dest_crate, version);
     fiddle_readme(src_crate, dest_crate, version);
+    if src_crate == "ring" {
+        println!("Fiddling other horrible things")
+        do_fragile_sed_crap(src_crate, dest_crate, version);
+    }
     println!("  Heckin publishing...");
     if !do_for_real {
         println!("  (But not really!)");
@@ -243,7 +314,7 @@ struct Opt {
     dest: String,
     /// When passed, actually publishes the crate instead of doing everything but.
     #[structopt(long)]
-    do_for_real: bool,
+    for_realsies: bool,
     /// Continue working even if cargo fails to publish a crate.
     #[structopt(long)]
     determination: bool,
@@ -287,7 +358,7 @@ fn main() {
     };
 
     src_versions_to_mirror.iter().for_each(|v| {
-        mirror_crate(&opt.src, &opt.dest, v, opt.do_for_real, opt.determination);
+        mirror_crate(&opt.src, &opt.dest, v, opt.for_realsies, opt.determination);
         // Sleep for a sec so we don't slam crates.io too hard.
         // Unlikely, but still polite to do.
         std::thread::sleep(std::time::Duration::from_secs(1));
