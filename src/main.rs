@@ -291,7 +291,7 @@ fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: b
     fiddle_cargo_toml(src_crate, dest_crate, version);
     fiddle_readme(src_crate, dest_crate, version);
     if src_crate == "ring" {
-        println!("Fiddling other horrible things")
+        println!("Fiddling other horrible things");
         do_fragile_sed_crap(src_crate, dest_crate, version);
     }
     println!("  Heckin publishing...");
