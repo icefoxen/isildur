@@ -103,8 +103,9 @@ fn patch_deps(toml_doc: &mut toml_edit::Document) {
                 Some(Item::Table(t)) => {
                     // Replace `foo = {version = "0.3", ...}` with
                     // `foo = {version = "0.3", package = "bar", ...}
+                    let mut new_dep_table = t.clone();
                     *new_dep_table.entry("package") = value(*new_dep);
-                    Item::Table(t.clone())
+                    Item::Table(new_dep_table)
                 }
                 Some(other) => other.clone(),
                 _ => Item::None,
@@ -184,7 +185,7 @@ Original README.md file follows:
         .expect(&format!("Couldn't write to readme file {:?}", &readme_file_path));
 }
 
-fn heckin_publish(src_crate: &str, version: &str, do_for_real: bool) {
+fn heckin_publish(src_crate: &str, version: &str, do_for_real: bool, ignore_failures: bool) {
     use std::process;
     use std::io::{self, Write};
     let working_dir = crate_dir_path(src_crate, version);
@@ -204,11 +205,13 @@ fn heckin_publish(src_crate: &str, version: &str, do_for_real: bool) {
     io::stdout().write_all(&output.stderr).unwrap();
     if !output.status.success() {
         println!("        Cargo {}", output.status);
-        process::exit(1);
+        if !ignore_failures {
+            process::exit(1);
+        }
     }
 }
 
-fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: bool) {
+fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: bool, ignore_failures: bool) {
     println!(
         "Mirroring {} {} -> {} {}",
         src_crate, version, dest_crate, version
@@ -224,7 +227,7 @@ fn mirror_crate(src_crate: &str, dest_crate: &str, version: &str, do_for_real: b
     if !do_for_real {
         println!("  (But not really!)");
     }
-    heckin_publish(src_crate, version, do_for_real);
+    heckin_publish(src_crate, version, do_for_real, ignore_failures);
 
     println!("  Done!");
 }
@@ -241,6 +244,9 @@ struct Opt {
     /// When passed, actually publishes the crate instead of doing everything but.
     #[structopt(long)]
     do_for_real: bool,
+    /// Continue working even if cargo fails to publish a crate.
+    #[structopt(long)]
+    determination: bool,
 }
 
 fn main() {
@@ -281,7 +287,7 @@ fn main() {
     };
 
     src_versions_to_mirror.iter().for_each(|v| {
-        mirror_crate(&opt.src, &opt.dest, v, opt.do_for_real);
+        mirror_crate(&opt.src, &opt.dest, v, opt.do_for_real, opt.determination);
         // Sleep for a sec so we don't slam crates.io too hard.
         // Unlikely, but still polite to do.
         std::thread::sleep(std::time::Duration::from_secs(1));
