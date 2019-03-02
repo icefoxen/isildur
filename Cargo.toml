@@ -1,8 +1,12 @@
 [package]
 name = "isildur"
-version = "0.1.0"
+description = "A tool for republishing a crate with an altered name"
+version = "0.2.0"
 authors = ["Simon Heath <icefoxen@gmail.com>"]
 edition = "2018"
+repository = "http://github.com/icefoxen/isildur"
+license = "MIT"
+readme = "README.md"
 
 [profile.dev]
 opt-level = 1
@@ -12,4 +16,5 @@ crates-index = "0.12"
 reqwest = "0.9"
 tar = "0.4"
 flate2 = "1"
+structopt = "0.2"
 toml_edit = "0.1"
