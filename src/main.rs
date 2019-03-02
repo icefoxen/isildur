@@ -95,6 +95,10 @@ fn fiddle_readme(src_crate: &str, dest_crate: &str, version: &str) {
 This crate is, apart from the name, an exact duplicate of {src}.  It has been produced by an automatic
 tool to work around some inconvenience in the upstream crate.
 
+THIS IS PROBABLY A HUGE HACK AND YOU SHOULD NOT USE THIS CRATE.  Or at least, understand *exactly*
+what the implications are before doing so -- ie, why this wacky automated fork of some source crate
+exists and the potential hazards of using it.
+
 For more information see <https://crates.io/crates/isildur>.
 
 "#, src=src_crate, dest=dest_crate);
